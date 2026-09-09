@@ -651,7 +651,7 @@
   outline: none !important;
 }
 
-.x-lumno-search-input-mode__menu-item:hover:not([aria-checked="true"]) {
+.x-lumno-search-input-mode__menu-item:hover:not([aria-checked="true"]):not(:focus-visible) {
   border-color: transparent !important;
 }
 

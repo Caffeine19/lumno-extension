@@ -847,7 +847,7 @@ assert.deepStrictEqual(
 );
 assert.deepStrictEqual(
   defaultSearchEngines.map((provider) => provider.key),
-  ['bd', 'bi', 'gg', 'ddg', 'br', 'eco', 'sg', 'yh', 'yx', 'sm'],
+  ['bd', 'bi', 'gg', 'kg', 'ddg', 'br', 'eco', 'sg', 'yh', 'yx', 'sm'],
   'built-in search engines should be explicitly classified and keep their intended order'
 );
 assert.strictEqual(
@@ -916,6 +916,11 @@ assert.strictEqual(
   defaultSearchEngines.find((provider) => provider.key === 'br').template,
   'https://search.brave.com/search?q={query}',
   'Brave Search should use its public result URL'
+);
+assert.strictEqual(
+  defaultSearchEngines.find((provider) => provider.key === 'kg').template,
+  'https://kagi.com/search?q={query}',
+  'Kagi should use its configured query URL'
 );
 assert.strictEqual(
   defaultSearchEngines.find((provider) => provider.key === 'eco').template,

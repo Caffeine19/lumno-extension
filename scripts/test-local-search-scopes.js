@@ -92,8 +92,13 @@ assert.match(
 );
 assert.match(
   inputModeCss,
+  /\.x-lumno-search-input-mode__menu-item:hover:not\(\[aria-checked="true"\]\):not\(:focus-visible\)\s*\{[\s\S]*?border-color:\s*transparent !important;/,
+  'scope menu hover should keep its border transparent without overriding keyboard focus'
+);
+assert.doesNotMatch(
+  inputModeCss,
   /\.x-lumno-search-input-mode__menu-item:hover:not\(\[aria-checked="true"\]\)\s*\{[\s\S]*?border-color:\s*transparent !important;/,
-  'scope menu hover should keep its border transparent'
+  'a hovered keyboard-focus target should retain its focus border'
 );
 assert.doesNotMatch(
   inputModeCss,

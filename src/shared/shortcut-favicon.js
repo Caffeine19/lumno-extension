@@ -40,6 +40,7 @@
     bd: 'assets/images/site-search/tile-bd.png',
     bi: 'assets/images/site-search/tile-bi.png',
     gg: 'assets/images/site-search/tile-gg.png',
+    kg: 'assets/images/site-search/tile-kg.png',
     ddg: 'assets/images/site-search/tile-ddg.png',
     br: 'assets/images/site-search/tile-br.png',
     eco: 'assets/images/site-search/tile-eco.png',

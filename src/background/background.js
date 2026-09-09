@@ -7669,6 +7669,13 @@ const SEARCH_ENGINE_DEFS = [
     searchUrl: (query) => `https://www.google.com/search?q=${encodeURIComponent(query)}`
   },
   {
+    id: 'kagi',
+    name: 'Kagi',
+    hostMatches: ['kagi.com'],
+    searchTemplate: 'https://kagi.com/search?q={query}',
+    searchUrl: (query) => `https://kagi.com/search?q=${encodeURIComponent(query)}`
+  },
+  {
     id: 'bing',
     name: 'Bing',
     hostMatches: ['bing.com'],

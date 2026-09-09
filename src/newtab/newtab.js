@@ -2393,6 +2393,12 @@
       searchUrl: (query) => `https://www.google.com/search?q=${encodeURIComponent(query)}`
     },
     {
+      id: 'kagi',
+      name: 'Kagi',
+      hostMatches: ['kagi.com'],
+      searchUrl: (query) => `https://kagi.com/search?q=${encodeURIComponent(query)}`
+    },
+    {
       id: 'bing',
       name: 'Bing',
       hostMatches: ['bing.com'],

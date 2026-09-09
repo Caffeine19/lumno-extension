@@ -3528,11 +3528,13 @@
       const button = target && typeof target.closest === 'function'
         ? target.closest('[role="menuitemradio"]')
         : null;
-      if (button) {
-        return;
-      }
+      // Native pointer focus can scroll the panel's ancestors before click
+      // returns focus to the input. All menu focus is managed with preventScroll.
       if (event && typeof event.preventDefault === 'function') {
         event.preventDefault();
+      }
+      if (button) {
+        return;
       }
       focusModeMenuSearch();
     }
