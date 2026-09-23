@@ -409,7 +409,7 @@
 }
 
 :is(#_x_extension_overlay_2024_unique_[data-theme="dark"], #_x_extension_onboarding_overlay_demo_2026_unique_[data-theme="dark"]) .x-ov-suggestion-item[data-row-state="active"] .x-ov-suggestion-icon-slot[data-favicon="true"] {
-  background-color: #FFFFFF;
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 :is(#_x_extension_overlay_2024_unique_, #_x_extension_onboarding_overlay_demo_2026_unique_) .x-ov-suggestion-text {

@@ -76,14 +76,14 @@ assert.match(
 
 assert.match(
   overlayDarkActiveFaviconBlock,
-  /background-color:\s*#FFFFFF;/,
-  'overlay dark active favicon slots should render on a white rounded rectangle'
+  /background-color:\s*rgba\(255,\s*255,\s*255,\s*0\.1\);/,
+  'overlay dark active favicon slots should sit on a 10%-white plate so light favicons stay visible'
 );
 
 assert.match(
   newtabDarkActiveFaviconBlock,
-  /background-color:\s*#FFFFFF;/,
-  'newtab dark active favicon slots should render on a white rounded rectangle'
+  /background-color:\s*rgba\(255,\s*255,\s*255,\s*0\.1\);/,
+  'newtab dark active favicon slots should sit on a 10%-white plate so light favicons stay visible'
 );
 
 assert.doesNotMatch(
