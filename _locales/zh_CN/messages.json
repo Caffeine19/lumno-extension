@@ -1674,7 +1674,7 @@
     "message": "无匹配结果"
   },
   "local_search_tab_hint": {
-    "message": "仅搜索{source}"
+    "message": "限定{source}"
   },
   "search_scope_switcher_label": {
     "message": "搜索范围：{scope}。选择即可切换"

@@ -1674,7 +1674,7 @@
     "message": "No matching results"
   },
   "local_search_tab_hint": {
-    "message": "Only search {source}"
+    "message": "Scoped to {source}"
   },
   "search_scope_switcher_label": {
     "message": "Search scope: {scope}. Activate to switch"

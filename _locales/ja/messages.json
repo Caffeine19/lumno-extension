@@ -1674,7 +1674,7 @@
     "message": "一致する結果はありません"
   },
   "local_search_tab_hint": {
-    "message": "{source}のみ検索"
+    "message": "{source}に限定"
   },
   "search_scope_switcher_label": {
     "message": "検索範囲：{scope}。選択すると切り替わります"

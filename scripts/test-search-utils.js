@@ -1209,4 +1209,174 @@ assert.strictEqual(
   'local scopes should require an exact keyword so normal searches are not hijacked'
 );
 
+// --- inline scope token parsing ("@fav" / "@his") ---
+
+const favParse = search.parseSearchScopeTokenInput('@fav lumno');
+assert.strictEqual(favParse.sourceType, 'bookmark', '@fav should map to the bookmark scope');
+assert.strictEqual(favParse.query, 'lumno', '@fav should strip the token and keep the query');
+assert.strictEqual(favParse.pending, null, 'a completed token with a query should not be pending');
+assert.strictEqual(favParse.runEndIndex, 4, 'token run should end after the token text');
+
+const hisParse = search.parseSearchScopeTokenInput('@HIS github');
+assert.strictEqual(hisParse.sourceType, 'history', '@his should map to the history scope');
+assert.strictEqual(hisParse.query, 'github', '@his parsing should be case-insensitive');
+assert.strictEqual(hisParse.tokenText, '@HIS', 'token parsing should preserve the typed text');
+
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('@fav').sourceType,
+  'bookmark',
+  'a bare completed token should still activate its scope with an empty query'
+);
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('@fav').query,
+  '',
+  'a bare completed token should leave an empty query'
+);
+
+const replaceParse = search.parseSearchScopeTokenInput('@fav @his lum');
+assert.strictEqual(
+  replaceParse.sourceType,
+  'history',
+  'the last of multiple leading tokens should win (mutual exclusion)'
+);
+assert.strictEqual(replaceParse.tokens.length, 2, 'both leading tokens should be recognized');
+assert.strictEqual(replaceParse.query, 'lum', 'text after the leading token run should be the query');
+
+const pendingParse = search.parseSearchScopeTokenInput('@h');
+assert.ok(pendingParse.pending, 'a trailing @-prefix at token position should be pending');
+assert.strictEqual(pendingParse.pending.text, '@h', 'pending fragment should capture the typed text');
+assert.strictEqual(pendingParse.sourceType, '', 'a pending fragment should not activate a scope');
+
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('@fav @h').pending.text,
+  '@h',
+  'a replacement token being typed after the active token should be pending'
+);
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('@fav @h').sourceType,
+  'bookmark',
+  'typing a replacement fragment should keep the previous scope until completion'
+);
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('@f').pending.text,
+  '@f',
+  'a partial token at input start should be pending'
+);
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('@').pending.text,
+  '@',
+  'a bare @ at input start should be pending'
+);
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('@fav lum @h').pending,
+  null,
+  'mid-query @-fragments should not trigger token completion'
+);
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('lum @h').pending,
+  null,
+  '@-fragments after plain text should not trigger token completion'
+);
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('xx@foo.com').sourceType,
+  '',
+  'email-like input should never be treated as a scope token'
+);
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('xx@foo.com').pending,
+  null,
+  'email-like input should never be pending'
+);
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('@favx').pending,
+  null,
+  'unknown @-words should fall back to plain text'
+);
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('@f ').pending,
+  null,
+  'an abandoned partial token (terminated by a space) should not stay pending'
+);
+assert.strictEqual(
+  search.parseSearchScopeTokenInput('').sourceType,
+  '',
+  'empty input should have no scope'
+);
+
+assert.deepStrictEqual(
+  search.getSearchScopeTokenCandidates('@'),
+  [
+    { token: '@fav', sourceType: 'bookmark', matchedText: '@' },
+    { token: '@his', sourceType: 'history', matchedText: '@' },
+  ],
+  'a bare @ should offer both scope token candidates'
+);
+assert.deepStrictEqual(
+  search.getSearchScopeTokenCandidates('@f'),
+  [{ token: '@fav', sourceType: 'bookmark', matchedText: '@f' }],
+  '@f should complete to @fav only'
+);
+assert.deepStrictEqual(
+  search.getSearchScopeTokenCandidates('@H'),
+  [{ token: '@his', sourceType: 'history', matchedText: '@H' }],
+  'candidate matching should be case-insensitive'
+);
+assert.deepStrictEqual(
+  search.getSearchScopeTokenCandidates('@fav @h'),
+  [{ token: '@his', sourceType: 'history', matchedText: '@h' }],
+  'a replacement fragment after an active token should complete to the other token'
+);
+assert.deepStrictEqual(
+  search.getSearchScopeTokenCandidates('lum'),
+  [],
+  'plain queries should have no token candidates'
+);
+assert.deepStrictEqual(
+  search.getSearchScopeTokenCandidates('@', { enabledSourceTypes: ['history'] }),
+  [{ token: '@his', sourceType: 'history', matchedText: '@' }],
+  'candidates should respect the enabled search result source types'
+);
+assert.deepStrictEqual(
+  search.getSearchScopeTokenCandidates('@', { enabledSourceTypes: ['topSite'] }),
+  [],
+  'candidates for disabled source types should be hidden'
+);
+
+assert.strictEqual(
+  search.applySearchScopeTokenCompletion('@f', '@fav'),
+  '@fav ',
+  'completing a partial token should produce the token followed by a space'
+);
+assert.strictEqual(
+  search.applySearchScopeTokenCompletion('@fav @h', '@his'),
+  '@his ',
+  'completing a replacement token should replace the previous token'
+);
+assert.strictEqual(
+  search.applySearchScopeTokenCompletion('lum', '@fav'),
+  'lum',
+  'completion should be a no-op without a pending token'
+);
+
+const canonical = search.canonicalizeSearchScopeTokenInput('@fav @his');
+assert.strictEqual(canonical.changed, true, 'duplicate leading tokens should canonicalize');
+assert.strictEqual(canonical.value, '@his ', 'canonicalization should keep only the last token');
+assert.strictEqual(canonical.sourceType, 'history', 'canonicalization should report the winning scope');
+const canonicalWithQuery = search.canonicalizeSearchScopeTokenInput('@his @fav lum');
+assert.strictEqual(
+  canonicalWithQuery.value,
+  '@fav lum',
+  'canonicalization should preserve the query text after the token run'
+);
+assert.strictEqual(
+  search.canonicalizeSearchScopeTokenInput('@fav lum').changed,
+  false,
+  'single-token input should not be rewritten'
+);
+assert.strictEqual(
+  search.canonicalizeSearchScopeTokenInput('xx@foo.com @his').changed,
+  false,
+  'plain text before a token should keep the input untouched'
+);
+
 console.log('search utils tests passed');

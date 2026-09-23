@@ -2590,6 +2590,156 @@
     return null;
   }
 
+  const SEARCH_SCOPE_TOKENS = Object.freeze([
+    Object.freeze({ token: "@fav", sourceType: "bookmark" }),
+    Object.freeze({ token: "@his", sourceType: "history" }),
+  ]);
+
+  function normalizeSearchScopeToken(value) {
+    return String(value || "")
+      .trim()
+      .replace(/\s+/g, "")
+      .toLowerCase();
+  }
+
+  function findSearchScopeTokenDefinition(value) {
+    const normalized = normalizeSearchScopeToken(value);
+    if (!normalized) {
+      return null;
+    }
+    return (
+      SEARCH_SCOPE_TOKENS.find((entry) => entry.token === normalized) || null
+    );
+  }
+
+  function isSearchScopeTokenWhitespace(char) {
+    return char === " " || char === "\t";
+  }
+
+  // Parses inline scope tokens at the start of the input ("@fav lumno",
+  // "@his"). The leading run of complete tokens is scanned left to right;
+  // the last token wins (mutual exclusion: "@fav @his" is equivalent to
+  // "@his"). Everything after the run is the free-text query. A trailing
+  // "@"-fragment at a valid token position (input start or right after the
+  // leading run) that is a proper prefix of a known token becomes `pending`
+  // and drives completion candidates. Mid-query "@"-text (e.g. emails or
+  // "lum @h") is never treated as a token.
+  function parseSearchScopeTokenInput(rawInput) {
+    const input = String(rawInput || "");
+    const tokens = [];
+    let pos = 0;
+    while (pos < input.length) {
+      while (pos < input.length && isSearchScopeTokenWhitespace(input[pos])) {
+        pos += 1;
+      }
+      if (pos >= input.length) {
+        break;
+      }
+      let end = pos;
+      while (end < input.length && !isSearchScopeTokenWhitespace(input[end])) {
+        end += 1;
+      }
+      const definition = findSearchScopeTokenDefinition(input.slice(pos, end));
+      if (!definition) {
+        break;
+      }
+      tokens.push({
+        text: input.slice(pos, end),
+        token: definition.token,
+        sourceType: definition.sourceType,
+        startIndex: pos,
+        endIndex: end,
+      });
+      pos = end;
+    }
+    let queryStart = pos;
+    while (
+      queryStart < input.length &&
+      isSearchScopeTokenWhitespace(input[queryStart])
+    ) {
+      queryStart += 1;
+    }
+    const query = input.slice(queryStart);
+    const effective = tokens.length > 0 ? tokens[tokens.length - 1] : null;
+    let pending = null;
+    if (
+      query &&
+      !/\s/.test(query) &&
+      query.startsWith("@") &&
+      !findSearchScopeTokenDefinition(query)
+    ) {
+      const prefix = query.toLowerCase();
+      const completable = SEARCH_SCOPE_TOKENS.some((entry) =>
+        entry.token.startsWith(prefix),
+      );
+      if (completable) {
+        pending = {
+          text: query,
+          startIndex: queryStart,
+          endIndex: input.length,
+        };
+      }
+    }
+    return {
+      tokens,
+      sourceType: effective ? effective.sourceType : "",
+      tokenText: effective ? effective.text : "",
+      runEndIndex: effective ? effective.endIndex : 0,
+      query,
+      pending,
+    };
+  }
+
+  function getSearchScopeTokenCandidates(rawInput, options) {
+    const parsed = parseSearchScopeTokenInput(rawInput);
+    if (!parsed.pending) {
+      return [];
+    }
+    const settings = options && typeof options === "object" ? options : {};
+    const enabledTypes = Array.isArray(settings.enabledSourceTypes)
+      ? settings.enabledSourceTypes
+          .map(normalizeSearchSuggestionSourceFilterType)
+          .filter(Boolean)
+      : null;
+    const prefix = parsed.pending.text.toLowerCase();
+    return SEARCH_SCOPE_TOKENS.filter((entry) => {
+      if (!entry.token.startsWith(prefix) || entry.token === prefix) {
+        return false;
+      }
+      return !enabledTypes || enabledTypes.indexOf(entry.sourceType) >= 0;
+    }).map((entry) => ({
+      token: entry.token,
+      sourceType: entry.sourceType,
+      matchedText: parsed.pending.text,
+    }));
+  }
+
+  function applySearchScopeTokenCompletion(rawInput, targetToken) {
+    const parsed = parseSearchScopeTokenInput(rawInput);
+    const definition = findSearchScopeTokenDefinition(targetToken);
+    if (!parsed.pending || !definition) {
+      return String(rawInput || "");
+    }
+    return `${definition.token} `;
+  }
+
+  function canonicalizeSearchScopeTokenInput(rawInput) {
+    const input = String(rawInput || "");
+    const parsed = parseSearchScopeTokenInput(input);
+    if (parsed.tokens.length <= 1) {
+      return { changed: false, value: input, sourceType: parsed.sourceType };
+    }
+    const effective = parsed.tokens[parsed.tokens.length - 1];
+    const value = parsed.query
+      ? `${effective.token} ${parsed.query}`
+      : `${effective.token} `;
+    return {
+      changed: value !== input,
+      value,
+      sourceType: effective.sourceType,
+    };
+  }
+
   const INTERACTIVE_SITE_SEARCH_SUBMIT_STRATEGIES = Object.freeze([
     'geminiPrompt',
     'chatgptPrompt',
@@ -3389,6 +3539,11 @@
     limitSearchSuggestionsForDisplay,
     findProviderForSiteSearchSuggestion,
     findLocalSearchScope,
+    findSearchScopeTokenDefinition,
+    parseSearchScopeTokenInput,
+    getSearchScopeTokenCandidates,
+    applySearchScopeTokenCompletion,
+    canonicalizeSearchScopeTokenInput,
     findSiteSearchProvider,
     findSiteSearchProviderByInput,
     findSiteSearchProviderByKey,

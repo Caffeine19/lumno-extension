@@ -18,7 +18,8 @@
     'zenSwitch',
     'commandOpenTabs',
     'commandCopyUrl',
-    'commandDocumentPip'
+    'commandDocumentPip',
+    'scopeToken'
   ]);
 
   const PRIMARY_ACTION_REASONS = new Set([

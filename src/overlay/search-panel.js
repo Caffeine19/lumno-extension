@@ -3843,8 +3843,23 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
 
     function requestOverlaySearchSuggestions(query) {
       const requestQuery = String(query || '').trim();
-      const requestLocalSearchScope = localSearchScopeState;
+      const requestScopeTokenParse = parseScopeTokenFromInput();
+      const requestScopeToken = (requestScopeTokenParse.sourceType &&
+          !localSearchScopeState && !siteSearchState && !openTabsSearchModeActive)
+        ? requestScopeTokenParse
+        : null;
+      // Inline scope tokens restrict the lookup to one local source and strip
+      // the token text from the query before it reaches the browser APIs.
+      const requestLookupQuery = requestScopeToken
+        ? String(requestScopeToken.query || '').trim()
+        : requestQuery;
+      const requestLocalSearchScope = localSearchScopeState ||
+        (requestScopeToken ? { sourceType: requestScopeToken.sourceType } : null);
       if (!requestLocalSearchScope && isSlashCommandInput(requestQuery)) {
+        updateSearchSuggestions([], requestQuery);
+        return;
+      }
+      if (!requestLocalSearchScope && requestScopeTokenParse.pending) {
         updateSearchSuggestions([], requestQuery);
         return;
       }
@@ -3852,7 +3867,7 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
         updateSearchSuggestions([], requestQuery);
         return;
       }
-      if (!requestQuery || !chrome || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') {
+      if (!requestLookupQuery || !chrome || !chrome.runtime || typeof chrome.runtime.sendMessage !== 'function') {
         return;
       }
       const requestSeq = ++overlaySuggestionRequestSeq;
@@ -3875,7 +3890,7 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
       }
       chrome.runtime.sendMessage({
         action: 'getSearchSuggestions',
-        query: requestQuery,
+        query: requestLookupQuery,
         context: 'overlay',
         sourceTypes: requestLocalSearchScope ? [requestLocalSearchScope.sourceType] : undefined,
         includeOpenTabs: requestLocalSearchScope ? false : undefined
@@ -4606,7 +4621,7 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
       if (!suggestion) {
         return false;
       }
-      const neutralTypes = ['googleSuggest', 'newtab', 'modeSwitch', 'zenSwitch', 'chatgpt', 'perplexity', 'commandNewTab', 'commandSettings', 'commandOpenTabs', 'commandCopyUrl', 'commandDocumentPip'];
+      const neutralTypes = ['googleSuggest', 'newtab', 'modeSwitch', 'zenSwitch', 'chatgpt', 'perplexity', 'commandNewTab', 'commandSettings', 'commandOpenTabs', 'commandCopyUrl', 'commandDocumentPip', 'scopeToken'];
       if (neutralTypes.includes(suggestion.type)) {
         return false;
       }
@@ -6189,6 +6204,166 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
       return 'ri-star-line';
     }
 
+    function parseScopeTokenFromValue(rawValue) {
+      if (!SEARCH_UTILS || typeof SEARCH_UTILS.parseSearchScopeTokenInput !== 'function') {
+        return { tokens: [], sourceType: '', tokenText: '', runEndIndex: 0, query: '', pending: null };
+      }
+      return SEARCH_UTILS.parseSearchScopeTokenInput(rawValue);
+    }
+
+    function parseScopeTokenFromInput() {
+      return parseScopeTokenFromValue(
+        latestRawInputValue || (searchInput ? searchInput.value : '') || ''
+      );
+    }
+
+    function isScopeTokenModeSuperseding() {
+      const parse = parseScopeTokenFromInput();
+      return Boolean(parse.pending || parse.sourceType);
+    }
+
+    function dismissScopeModesForScopeToken() {
+      if (openTabsSearchModeActive) {
+        cancelPendingOpenTabsPrefixEntry();
+        openTabsSearchModeActive = false;
+        clearSiteSearchPrefix();
+      }
+      if (siteSearchState) {
+        clearSiteSearch();
+      }
+      if (localSearchScopeState) {
+        clearLocalSearchScope();
+      }
+    }
+
+    function commitScopeTokenInputValue(nextValue) {
+      const value = String(nextValue || '');
+      searchInput.value = value;
+      searchInput.setSelectionRange(value.length, value.length);
+      latestRawInputValue = value;
+      latestOverlayQuery = value.trim();
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function canonicalizeScopeTokenInput(rawValue) {
+      if (!SEARCH_UTILS || typeof SEARCH_UTILS.canonicalizeSearchScopeTokenInput !== 'function') {
+        return String(rawValue || '');
+      }
+      const result = SEARCH_UTILS.canonicalizeSearchScopeTokenInput(rawValue);
+      if (!result.changed) {
+        return String(rawValue || '');
+      }
+      // Inline scope tokens are mutually exclusive: a newly typed complete
+      // token replaces the previous one ("@fav @his" collapses to "@his ").
+      searchInput.value = result.value;
+      searchInput.setSelectionRange(result.value.length, result.value.length);
+      latestRawInputValue = result.value;
+      latestOverlayQuery = result.value.trim();
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      return result.value;
+    }
+
+    function buildScopeTokenSuggestion(candidate) {
+      const sourceType = candidate && candidate.sourceType ? candidate.sourceType : '';
+      const scopeLabel = getLocalSearchScopeLabel({ sourceType });
+      return {
+        type: 'scopeToken',
+        commandText: candidate && candidate.token ? candidate.token : '',
+        tokenText: candidate && candidate.token ? candidate.token : '',
+        title: formatMessage('local_search_tab_hint', '限定{source}', {
+          source: scopeLabel
+        }),
+        url: '',
+        sourceType
+      };
+    }
+
+    function getScopeTokenCandidateSuggestions(rawValue) {
+      if (!SEARCH_UTILS || typeof SEARCH_UTILS.getSearchScopeTokenCandidates !== 'function') {
+        return [];
+      }
+      return SEARCH_UTILS.getSearchScopeTokenCandidates(rawValue, {
+        enabledSourceTypes: enabledSearchResultSourceTypes
+      }).map(buildScopeTokenSuggestion);
+    }
+
+    function applyScopeTokenFromSuggestion(suggestion) {
+      const tokenText = String(
+        (suggestion && (suggestion.tokenText || suggestion.commandText)) || ''
+      );
+      const rawValue = String(searchInput.value || '');
+      const nextValue = (SEARCH_UTILS &&
+          typeof SEARCH_UTILS.applySearchScopeTokenCompletion === 'function')
+        ? SEARCH_UTILS.applySearchScopeTokenCompletion(rawValue, tokenText)
+        : rawValue;
+      if (nextValue === rawValue) {
+        return;
+      }
+      searchInput.focus();
+      commitScopeTokenInputValue(nextValue);
+    }
+
+    function clearScopeTokenFromInput() {
+      const value = String(searchInput.value || '');
+      const parse = parseScopeTokenFromValue(value);
+      if (!parse.pending && !parse.sourceType) {
+        return false;
+      }
+      const nextValue = parse.sourceType
+        ? String(parse.query || '')
+        : value.slice(0, parse.pending.startIndex);
+      searchInput.focus();
+      commitScopeTokenInputValue(nextValue);
+      return true;
+    }
+
+    function tryRemoveScopeTokenUnitOnBackspace(event) {
+      const value = String(searchInput.value || '');
+      const parse = parseScopeTokenFromValue(value);
+      if (!parse.sourceType) {
+        return false;
+      }
+      if (searchInput.selectionStart !== searchInput.selectionEnd) {
+        return false;
+      }
+      let unitEnd = parse.runEndIndex;
+      while (unitEnd < value.length &&
+          (value[unitEnd] === ' ' || value[unitEnd] === '\t')) {
+        unitEnd += 1;
+      }
+      if (searchInput.selectionStart !== unitEnd) {
+        return false;
+      }
+      // The token acts as one editable unit: Backspace right after it removes
+      // the whole token (plus its trailing separator) in one press.
+      event.preventDefault();
+      const nextValue = value.slice(unitEnd);
+      searchInput.value = nextValue;
+      searchInput.setSelectionRange(0, 0);
+      latestRawInputValue = nextValue;
+      latestOverlayQuery = nextValue.trim();
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    }
+
+    function handleScopeTokenRouting(rawValue, trimmedQuery) {
+      const parse = parseScopeTokenFromValue(rawValue);
+      if (!parse.pending && !parse.sourceType) {
+        return false;
+      }
+      dismissScopeModesForScopeToken();
+      if (parse.pending) {
+        updateSearchSuggestions([], trimmedQuery);
+        return true;
+      }
+      if (String(parse.query || '').trim()) {
+        requestOverlaySearchSuggestions(trimmedQuery);
+      } else {
+        updateSearchSuggestions([], trimmedQuery);
+      }
+      return true;
+    }
+
     function getSearchModeProviderId(provider) {
       return `provider:${provider && (provider.key || provider.name) ? (provider.key || provider.name) : ''}`;
     }
@@ -6446,7 +6621,7 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
         name: source,
         tabHintLabel: formatMessage(
           'local_search_tab_hint',
-          '仅搜索{source}',
+          '限定{source}',
           { source }
         )
       };
@@ -6649,11 +6824,14 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
 
     function syncSearchTriggerHintFromInput(rawValue) {
       const triggerInput = String(rawValue || '').trim();
+      const triggerScopeParse = parseScopeTokenFromValue(rawValue);
       if (!triggerInput ||
           siteSearchState ||
           localSearchScopeState ||
           openTabsSearchModeActive ||
-          isSlashCommandInput(triggerInput)) {
+          isSlashCommandInput(triggerInput) ||
+          triggerScopeParse.pending ||
+          triggerScopeParse.sourceType) {
         clearPendingSearchTriggerHint();
         return;
       }
@@ -6720,6 +6898,13 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
         latestRawInputValue = rawValue;
         clearAutocomplete();
         syncSearchTriggerHintFromInput(rawValue);
+        const scopeCanonicalValue = canonicalizeScopeTokenInput(rawValue);
+        if (scopeCanonicalValue !== rawValue) {
+          return;
+        }
+        if (handleScopeTokenRouting(rawValue, query)) {
+          return;
+        }
         if (query.length > 0) {
           if (!localSearchScopeState && isSlashCommandInput(query)) {
             updateSearchSuggestions([], query);
@@ -6784,6 +6969,13 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
         latestRawInputValue = rawValue;
         clearAutocomplete();
         syncSearchTriggerHintFromInput(rawValue);
+        const scopeCanonicalValue = canonicalizeScopeTokenInput(rawValue);
+        if (scopeCanonicalValue !== rawValue) {
+          return;
+        }
+        if (handleScopeTokenRouting(rawValue, query)) {
+          return;
+        }
         if (query.length > 0) {
           if (!localSearchScopeState && isSlashCommandInput(query)) {
             updateSearchSuggestions([], query);
@@ -7026,6 +7218,12 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
         clearOpenTabsSearchMode();
         return;
       }
+      if (e.key === 'Escape' && isScopeTokenModeSuperseding()) {
+        e.preventDefault();
+        e.stopPropagation();
+        clearScopeTokenFromInput();
+        return;
+      }
       if (e.key === 'Backspace' && siteSearchState && !searchInput.value) {
         if (!shouldRemoveSearchModeTagOnBackspace(e)) {
           return;
@@ -7049,6 +7247,9 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
         return;
       }
       if (isImeCompositionEvent(e)) {
+        return;
+      }
+      if (e.key === 'Backspace' && tryRemoveScopeTokenUnitOnBackspace(e)) {
         return;
       }
       const inputHistoryDirection =
@@ -7262,6 +7463,10 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
 
           if (isSearchSuggestion && currentSuggestions[activeSuggestionIndex]) {
             const selectedSuggestion = currentSuggestions[activeSuggestionIndex];
+            if (selectedSuggestion.type === 'scopeToken') {
+              applyScopeTokenFromSuggestion(selectedSuggestion);
+              return;
+            }
             if (selectedSuggestion.type === 'modeSwitch') {
               applyThemeModeChange(selectedSuggestion.nextMode);
               searchInput.focus();
@@ -7610,6 +7815,10 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
 
     function activateRenderedOverlaySuggestion(suggestion, query, event, index, item) {
       if (!suggestion) {
+        return;
+      }
+      if (suggestion.type === 'scopeToken') {
+        applyScopeTokenFromSuggestion(suggestion);
         return;
       }
       if (suggestion.type === 'commandNewTab') {
@@ -8159,6 +8368,15 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
       const siteSearchQueryModeActive = !localSearchQueryModeActive &&
         !slashCommandModeActive &&
         Boolean(siteSearchState && String(query || '').trim());
+      const scopeTokenParseState = parseScopeTokenFromInput();
+      const scopeTokenTyping = Boolean(scopeTokenParseState.pending) &&
+        !localSearchScopeState && !siteSearchState && !openTabsSearchModeActive;
+      const scopeTokenQueryModeActive = !scopeTokenTyping &&
+        Boolean(scopeTokenParseState.sourceType) &&
+        !localSearchScopeState && !siteSearchState && !openTabsSearchModeActive;
+      const scopeTokenSourceType = scopeTokenQueryModeActive
+        ? scopeTokenParseState.sourceType
+        : '';
       const modeCommandActive = slashCommandModeActive && !siteSearchQueryModeActive && isModeCommand(rawTagInput);
       if (modeCommandActive) {
         if (storageArea) {
@@ -8174,7 +8392,8 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
 
       // Add New Tab suggestion as first item
       const newTabSuggestion = (localSearchQueryModeActive || slashCommandModeActive ||
-          modeCommandActive || siteSearchQueryModeActive)
+          modeCommandActive || siteSearchQueryModeActive ||
+          scopeTokenTyping || scopeTokenQueryModeActive)
         ? null
         : {
           type: 'newtab',
@@ -8223,13 +8442,19 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
           commandMatches.forEach((command) => {
             preSuggestions.push(buildCommandSuggestion(command));
           });
+        } else if (scopeTokenTyping) {
+          preSuggestions.push(...getScopeTokenCandidateSuggestions(
+            latestRawInputValue || query || ''
+          ));
         } else if (!siteSearchQueryModeActive && !localSearchQueryModeActive) {
-          const directUrlSuggestion = getDirectUrlSuggestion(query);
-          if (directUrlSuggestion && !isCurrentOverlayTabUrl(directUrlSuggestion.url)) {
-            preSuggestions.push(directUrlSuggestion);
+          if (!scopeTokenQueryModeActive) {
+            const directUrlSuggestion = getDirectUrlSuggestion(query);
+            if (directUrlSuggestion && !isCurrentOverlayTabUrl(directUrlSuggestion.url)) {
+              preSuggestions.push(directUrlSuggestion);
+            }
+            const keywordSuggestions = buildKeywordSuggestions(query, rules);
+            preSuggestions.push(...keywordSuggestions);
           }
-          const keywordSuggestions = buildKeywordSuggestions(query, rules);
-          preSuggestions.push(...keywordSuggestions);
         }
 
         const siteProvidersForTags = (siteSearchProvidersCache && siteSearchProvidersCache.length > 0)
@@ -8251,7 +8476,8 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
         }
         const rawTagInputForInline = (latestRawInputValue || searchInput.value || '').trim();
         const inlineCandidate = (!localSearchQueryModeActive && !slashCommandModeActive &&
-            !siteSearchQueryModeActive && !modeCommandActive && !hasCommand)
+            !siteSearchQueryModeActive && !modeCommandActive && !hasCommand &&
+            !scopeTokenTyping && !scopeTokenQueryModeActive)
           ? getInlineSiteSearchCandidate(rawTagInputForInline, providersForTags)
           : null;
         let inlineSuggestion = null;
@@ -8290,15 +8516,18 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
           : null;
 
         // Add New Tab, ChatGPT and Perplexity suggestions to the beginning
-        let allSuggestions = localSearchQueryModeActive
+        const scopedSourceTypeFilter = localSearchQueryModeActive && localSearchScopeState
+          ? localSearchScopeState.sourceType
+          : scopeTokenSourceType;
+        let allSuggestions = scopedSourceTypeFilter
           ? suggestions.filter((item) => (
-            item &&
-            localSearchScopeState &&
-            item.type === localSearchScopeState.sourceType
+            item && item.type === scopedSourceTypeFilter
           ))
-          : (slashCommandModeActive ? [...preSuggestions] : (siteSearchQueryModeActive
+          : (scopeTokenTyping
+            ? [...preSuggestions]
+            : (slashCommandModeActive ? [...preSuggestions] : (siteSearchQueryModeActive
             ? (siteSearchSuggestion ? [siteSearchSuggestion] : [])
-            : (modeCommandActive ? [...preSuggestions] : [...preSuggestions, newTabSuggestion, /*chatGptSuggestion, perplexitySuggestion,*/ ...suggestions])));
+            : (modeCommandActive ? [...preSuggestions] : [...preSuggestions, newTabSuggestion, /*chatGptSuggestion, perplexitySuggestion,*/ ...suggestions]))));
         allSuggestions.forEach((item) => {
           if (!item || !item.url) {
             return;
@@ -8340,7 +8569,8 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
         let mergedProvider = null;
         let primarySuggestion = null;
         const preferAutocompleteFirst = overlaySearchResultPriorityMode !== 'search';
-        if (!localSearchQueryModeActive && !slashCommandModeActive && !modeCommandActive && !hasCommand) {
+        if (!localSearchQueryModeActive && !slashCommandModeActive && !modeCommandActive && !hasCommand &&
+            !scopeTokenTyping && !scopeTokenQueryModeActive) {
           if (!siteSearchState && !inlineEnabled && preferAutocompleteFirst) {
             strongNavigationMatch = promoteStrongNavigationMatch(allSuggestions, latestRawInputValue.trim());
             if (strongNavigationMatch) {
@@ -8465,6 +8695,17 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
             primaryHighlightReason = 'localScope';
             primarySuggestion = allSuggestions[0];
           }
+        } else if (scopeTokenTyping || scopeTokenQueryModeActive) {
+          clearAutocomplete();
+          inlineSearchState = null;
+          siteSearchTriggerState = null;
+          localSearchScopeTriggerState = null;
+          clearSiteSearchTabHint();
+          if (allSuggestions.length > 0) {
+            primaryHighlightIndex = 0;
+            primaryHighlightReason = scopeTokenTyping ? 'scopeToken' : 'localScope';
+            primarySuggestion = allSuggestions[0];
+          }
         } else if (modeCommandActive) {
           clearAutocomplete();
           inlineSearchState = null;
@@ -8532,11 +8773,21 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
             item && item.type !== 'directUrl'
           )));
         }
+        const scopeTokenEmptyHint = scopeTokenQueryModeActive &&
+          allSuggestions.length === 0 &&
+          !String(scopeTokenParseState.query || '').trim()
+          ? formatMessage('local_search_tab_hint', '限定{source}', {
+              source: getLocalSearchScopeLabel({ sourceType: scopeTokenSourceType })
+            })
+          : '';
         const emptyMessage = slashCommandModeActive && allSuggestions.length === 0
           ? t('slash_command_empty', '无匹配命令')
-          : (localSearchQueryModeActive && allSuggestions.length === 0
-            ? t('overlay_empty_result', '无匹配结果')
-            : '');
+          : (scopeTokenEmptyHint
+            ? scopeTokenEmptyHint
+            : ((localSearchQueryModeActive && allSuggestions.length === 0) ||
+              ((scopeTokenTyping || scopeTokenQueryModeActive) && allSuggestions.length === 0)
+              ? t('overlay_empty_result', '无匹配结果')
+              : ''));
         reactView.render({
           suggestions: allSuggestions,
           query,

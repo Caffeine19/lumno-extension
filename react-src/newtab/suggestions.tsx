@@ -1546,6 +1546,16 @@ function getSuggestionIconSpec(
     commandSettings: 'ri-settings-3-line',
     commandDocumentPip: 'ri-scissors-cut-line'
   };
+  if (type === 'scopeToken') {
+    return {
+      kind: 'inline',
+      iconName:
+        suggestion.sourceType === 'history'
+          ? 'ri-history-line'
+          : 'ri-bookmark-3-line',
+      tone: 'subtext'
+    };
+  }
   if (commandIcons[type]) {
     return {
       kind: 'inline',

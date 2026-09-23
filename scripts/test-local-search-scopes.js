@@ -470,16 +470,16 @@ assert.match(
   const surface = index === 0 ? 'newtab' : 'overlay';
   assert.match(
     source,
-    /function getLocalSearchScopeTabHintProvider\(scope\)[\s\S]*?'local_search_tab_hint'[\s\S]*?'仅搜索\{source\}'/,
+    /function getLocalSearchScopeTabHintProvider\(scope\)[\s\S]*?'local_search_tab_hint'[\s\S]*?'限定\{source\}'/,
     `${surface} should use the dedicated local-search Tab hint copy`
   );
 });
 
 [
-  ['en', 'Only search {source}'],
-  ['zh_CN', '仅搜索{source}'],
-  ['zh_TW', '僅搜尋{source}'],
-  ['ja', '{source}のみ検索']
+  ['en', 'Scoped to {source}'],
+  ['zh_CN', '限定{source}'],
+  ['zh_TW', '限定{source}'],
+  ['ja', '{source}に限定']
 ].forEach(([locale, expected]) => {
   const messages = JSON.parse(readSource(`_locales/${locale}/messages.json`));
   assert.strictEqual(

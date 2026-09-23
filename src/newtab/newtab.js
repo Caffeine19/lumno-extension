@@ -13853,7 +13853,7 @@
       name: source,
       tabHintLabel: formatMessage(
         'local_search_tab_hint',
-        '仅搜索{source}',
+        '限定{source}',
         { source }
       )
     };
