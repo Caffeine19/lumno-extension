@@ -26,7 +26,6 @@
     brandSecondaryFamilyLimit: 3,
     brandProtectedOpenTabLimit: 1,
     brandDeepSelectionBoostLimit: 64,
-    genericBrandDeepTitlePenalty: 180
   });
 
   const SEARCH_SELECTION_POLICY = Object.freeze({
@@ -1164,6 +1163,34 @@
     return [primaryResult, searchAction, ...remainingSuggestions];
   }
 
+  function pinExactTitleMatchFirst(list, rawQuery) {
+    const suggestions = Array.isArray(list) ? list.filter(Boolean) : [];
+    const needle = String(rawQuery || '').trim().toLowerCase();
+    if (!needle || suggestions.length < 2) {
+      return suggestions;
+    }
+    const exactIndex = suggestions.findIndex(
+      (suggestion) =>
+        Boolean(suggestion) &&
+        !isKeywordSearchSuggestion(suggestion) &&
+        String(suggestion.title || '').trim().toLowerCase() === needle,
+    );
+    if (exactIndex <= 0) {
+      return suggestions;
+    }
+    const exactMatch = suggestions[exactIndex];
+    suggestions.splice(exactIndex, 1);
+    suggestions.unshift(exactMatch);
+    return suggestions;
+  }
+
+  function composeNavigationFirstSlate(list, rawQuery) {
+    const grouped = groupSearchSuggestionsByKind(
+      Array.isArray(list) ? list : [],
+    );
+    return pinExactTitleMatchFirst(grouped, rawQuery);
+  }
+
   function hasLocalResultSuggestion(list) {
     return (Array.isArray(list) ? list : []).some((suggestion) => (
       suggestion && !isKeywordSearchSuggestion(suggestion)
@@ -1661,13 +1688,6 @@
     let sourceScore = 0;
     let coverageStats = null;
     const now = getNow(settings);
-    const clusterInfo = getSearchSuggestionClusterInfo(item.url);
-    const isGenericBrandDeepTitle = Boolean(
-      context &&
-      context.intentType === 'brand' &&
-      titleLower === context.queryLower &&
-      clusterInfo.depth > 0
-    );
 
     if (titleLower === context.queryLower) textScore += 140;
     if (titleLower.startsWith(context.queryLower)) textScore += 70;
@@ -1837,7 +1857,6 @@
       sourceScore +
       getSearchSuggestionCategoryAdjustment(item, context, coverageStats) +
       getSearchDirectNavigationAdjustment(item, sourceType, context) -
-      (isGenericBrandDeepTitle ? SEARCH_POLICY.genericBrandDeepTitlePenalty : 0) -
       getOwnExtensionUtilityPenalty(item, {
         hasSettingsIntent: context.hasSettingsIntent,
         isOwnExtensionUrl: settings.isOwnExtensionUrl
@@ -3336,6 +3355,8 @@
     getSearchSuggestionFamilyKey,
     groupSearchSuggestionsByKind,
     pinExactSearchActionSecond,
+    pinExactTitleMatchFirst,
+    composeNavigationFirstSlate,
     isSearchOpenTabSuggestion,
     getSearchSuggestionSourceRank,
     getSearchSelectionBoost,

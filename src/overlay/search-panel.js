@@ -8411,8 +8411,8 @@ window._x_extension_toggleSearchOverlay_2026_unique_ = function(tabs, overlayCon
             }
           }
           if (preferAutocompleteFirst &&
-              typeof SEARCH_UTILS.pinExactSearchActionSecond === 'function') {
-            allSuggestions = SEARCH_UTILS.pinExactSearchActionSecond(allSuggestions);
+              typeof SEARCH_UTILS.composeNavigationFirstSlate === 'function') {
+            allSuggestions = SEARCH_UTILS.composeNavigationFirstSlate(allSuggestions, query);
           }
           if (query && primaryHighlightIndex < 0 && allSuggestions.length > 0) {
             primaryHighlightIndex = 0;
