@@ -19,6 +19,9 @@
     "check:manifest": "node scripts/check-manifest-resources.js",
     "audit:style": "node scripts/audit-style-debt.js",
     "audit:i18n": "node scripts/audit-i18n.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky",
     "profile:newtab-data": "node --expose-gc scripts/profile-newtab-data-performance.js",
     "package:store": "npm run build:react && node scripts/package-store.js",
     "test:package-store": "node scripts/test-package-store.js",
@@ -88,6 +91,9 @@
     "test:favicon-utils": "node scripts/test-favicon-utils.js",
     "test:search": "node scripts/test-search-utils.js"
   },
+  "lint-staged": {
+    "*.{js,mjs,cjs,jsx,ts,tsx,html,css}": "prettier --write"
+  },
   "dependencies": {
     "@number-flow/react": "^0.6.2",
     "react": "^19.2.0",
@@ -97,7 +103,10 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "husky": "^9.1.7",
     "jsdom": "^27.0.0",
+    "lint-staged": "^17.5.1",
+    "prettier": "^3.9.9",
     "typescript": "^5.9.0",
     "vite": "^7.0.0",
     "vitest": "^3.2.0"
